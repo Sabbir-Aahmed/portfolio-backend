@@ -1,0 +1,4 @@
+__pycache__/
+port_env
+db.sqlite3
+.env
