@@ -3,6 +3,7 @@ from pathlib import Path
 from decouple import config
 from datetime import timedelta
 import cloudinary
+import cloudinary_storage
 
 # Build paths inside the project like this: BASE_DIR / 'sabbir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -35,7 +36,9 @@ INSTALLED_APPS = [
     'django_cleanup.apps.CleanupConfig',
     'djoser',
     'drf_yasg',
-    'portfolio'
+    'portfolio',
+    'cloudinary',
+    'cloudinary_storage',
 ]
 
 MIDDLEWARE = [
