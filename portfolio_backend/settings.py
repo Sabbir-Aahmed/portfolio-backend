@@ -72,7 +72,7 @@ WSGI_APPLICATION = 'portfolio_backend.wsgi.app'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "https://mdsabbirahmed.netlify.app/",
+    "https://mdsabbirahmed.netlify.app",
 ]
 
 INTERNAL_IPS = [
