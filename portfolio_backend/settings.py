@@ -173,6 +173,15 @@ cloudinary.config(
     secure=True
 )
 
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': config('cloud_name'),
+    'API_KEY': config('api_key'),
+    'API_SECRET': config('api_secret'),
+    'RESOURCE_TYPE': 'raw',
+}
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
 SIMPLE_JWT = {
    'AUTH_HEADER_TYPES': ('JWT',),
    "ACCESS_TOKEN_LIFETIME": timedelta(days=30),

@@ -45,10 +45,11 @@ class ResumeSerializer(serializers.ModelSerializer):
         return None
 
 class ResumeCreateSerializer(serializers.ModelSerializer):
+    pdf_file = serializers.FileField(required=False) 
     class Meta:
         model = Resume
         fields = ['name', 'email', 'phone', 'location', 'summary', 
-                 'github_url', 'linkedin_url', 'portfolio_url']
+                 'github_url', 'linkedin_url', 'portfolio_url', 'pdf_file']
 
 class PortfolioProjectSerializer(serializers.ModelSerializer):
     technologies_display = serializers.SerializerMethodField()
