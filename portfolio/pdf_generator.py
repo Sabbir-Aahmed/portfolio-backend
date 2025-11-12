@@ -15,7 +15,7 @@ class ResumePDFGenerator:
         # Color scheme
         self.primary_color = colors.HexColor('#2E86AB') 
         self.secondary_color = colors.HexColor('#6C757D') 
-        self.accent_color = colors.HexColor('#F24236') 
+        self.accent_color = colors.HexColor("#2E86AB") 
         self.dark_color = colors.HexColor('#2B2D42') 
         self.light_bg = colors.HexColor('#F8F9FA')
         
@@ -173,7 +173,7 @@ class ResumePDFGenerator:
 
         # Professional Summary
         if resume.summary and resume.summary.strip():
-            self.add_section_header(story, "PROFESSIONAL SUMMARY")
+            self.add_section_header(story, "Creer Objective")
             # Clean up summary text
             summary_text = ' '.join(resume.summary.split())
             story.append(Paragraph(summary_text, self.styles['SummaryText']))
@@ -213,7 +213,69 @@ class ResumePDFGenerator:
                             story.append(Paragraph(f"• {line.strip()}", self.styles['CustomBodyText']))
                 story.append(Spacer(1, 0.1*inch))
 
-        # Education section
+       
+        # Skills with better formatting
+        if resume.skills.exists():
+            self.add_section_header(story, "TECHNICAL SKILLS")
+
+            # Group skills by level
+            skills_by_level = {"Beginner": [], "Intermediate": [], "Advanced": [], "Expert": []}
+            for skill in resume.skills.all():
+                if skill.name:
+                    level = skill.level.title() if skill.level else "Other"
+                    if level not in skills_by_level:
+                        skills_by_level[level] = []
+                    skills_by_level[level].append(skill.name)
+
+            # Define the display order
+            ordered_levels = ["Expert", "Advanced", "Intermediate", "Beginner"]
+
+            # Display each level in its own section
+            for level in ordered_levels:
+                skills = skills_by_level.get(level, [])
+                if skills:
+                    # Add level heading (like a mini sub-section)
+                    story.append(Paragraph(f'<b><font color="black">{level} </font></b>', self.styles['Position']))
+                    story.append(Paragraph(", ".join(skills), self.styles['CustomBodyText']))
+                    story.append(Spacer(1, 0.1 * inch))
+
+
+        # Projects with enhanced layout
+        if resume.resume_projects.exists():
+            self.add_section_header(story, "PROJECTS")
+            for proj in resume.resume_projects.all():
+                # Project title and links aligned like education section
+                links = []
+                if hasattr(proj, 'project_url') and proj.project_url:
+                    links.append(f'<a href="{proj.project_url}" {link_style}>Live Demo</a>')
+                if hasattr(proj, 'github_url') and proj.github_url:
+                    links.append(f'<a href="{proj.github_url}" {link_style}>Source Code</a>')
+
+                project_header_data = [
+                    [
+                        Paragraph(f"<b>{proj.name}</b>", self.styles['Company']),
+                        Paragraph(" | ".join(links) if links else "", self.styles['LinkStyle'])
+                    ]
+                ]
+
+                project_header_table = Table(project_header_data, colWidths=[doc.width * 0.7, doc.width * 0.3])
+                project_header_table.setStyle(TableStyle([
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ]))
+                story.append(project_header_table)
+
+                if proj.description:
+                    story.append(Paragraph(proj.description, self.styles['CustomBodyText']))
+
+                if proj.technologies:
+                    tech_text = f"<b>Technologies:</b> {', '.join(proj.technologies)}"
+                    story.append(Paragraph(tech_text, self.styles['CustomBodyText']))
+
+                story.append(Spacer(1, 0.1*inch))
+
+         # Education section
         if resume.educations.exists():
             self.add_section_header(story, "EDUCATION")
             for edu in resume.educations.all():
@@ -247,52 +309,6 @@ class ResumePDFGenerator:
                 
                 if edu.description:
                     story.append(Paragraph(edu.description, self.styles['CustomBodyText']))
-                story.append(Spacer(1, 0.1*inch))
-
-        # Skills with better formatting
-        if resume.skills.exists():
-            self.add_section_header(story, "TECHNICAL SKILLS")
-            # Group skills by level for better organization
-            skills_by_level = {}
-            for skill in resume.skills.all():
-                if skill.name:
-                    if skill.level not in skills_by_level:
-                        skills_by_level[skill.level] = []
-                    skills_by_level[skill.level].append(skill.name)
-            
-            skills_text_parts = []
-            for level, skills in skills_by_level.items():
-                level_display = level.title() + ": " if level != 'intermediate' else ""
-                skills_text_parts.append(f"<b>{level_display}</b>{', '.join(skills)}")
-            
-            if skills_text_parts:
-                skills_text = " | ".join(skills_text_parts)
-                story.append(Paragraph(skills_text, self.styles['CustomBodyText']))
-                story.append(Spacer(1, 0.1*inch))
-
-        # Projects with enhanced layout
-        if resume.resume_projects.exists():
-            self.add_section_header(story, "PROJECTS")
-            for proj in resume.resume_projects.all():
-                story.append(Paragraph(f"<b>{proj.name}</b>", self.styles['Company']))
-                
-                if proj.description:
-                    story.append(Paragraph(proj.description, self.styles['CustomBodyText']))
-                
-                if proj.technologies:
-                    tech_text = f"<b>Technologies:</b> {', '.join(proj.technologies)}"
-                    story.append(Paragraph(tech_text, self.styles['CustomBodyText']))
-                
-                # Project links with better styling
-                links = []
-                if hasattr(proj, 'project_url') and proj.project_url:
-                    links.append(f'<a href="{proj.project_url}" {link_style}>Live Demo</a>')
-                if hasattr(proj, 'github_url') and proj.github_url:
-                    links.append(f'<a href="{proj.github_url}" {link_style}>Source Code</a>')
-                
-                if links:
-                    story.append(Paragraph(" | ".join(links), self.styles['LinkStyle']))
-                
                 story.append(Spacer(1, 0.1*inch))
 
         # Add footer with generation info

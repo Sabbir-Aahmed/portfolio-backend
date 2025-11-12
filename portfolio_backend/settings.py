@@ -68,11 +68,11 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'portfolio_backend.wsgi.application'
+WSGI_APPLICATION = 'portfolio_backend.wsgi.app'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "https://your-frontend-domain.vercel.app",
+    "https://mdsabbirahmed.netlify.app/",
 ]
 
 INTERNAL_IPS = [
