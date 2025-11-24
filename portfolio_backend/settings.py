@@ -180,7 +180,7 @@ CLOUDINARY_STORAGE = {
     'CLOUD_NAME': config('cloud_name'),
     'API_KEY': config('api_key'),
     'API_SECRET': config('api_secret'),
-    'RESOURCE_TYPE': 'raw',
+    'SECURE': True,
 }
 
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'

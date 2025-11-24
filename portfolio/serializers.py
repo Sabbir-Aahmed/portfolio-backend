@@ -52,25 +52,18 @@ class ResumeCreateSerializer(serializers.ModelSerializer):
                  'github_url', 'linkedin_url', 'portfolio_url', 'pdf_file']
 
 class PortfolioProjectSerializer(serializers.ModelSerializer):
-    technologies_display = serializers.SerializerMethodField()
-    image_url = serializers.SerializerMethodField()
+    # technologies_display = serializers.SerializerMethodField()
     
     class Meta:
         model = PortfolioProject
         fields = [
             'id', 'title', 'description', 'short_description', 'image', 
-            'image_url', 'technologies', 'technologies_display', 'live_link', 
-            'github_link', 'featured', 'completed_date'
+            'technologies',  'live_link', 'github_client','github_server', 'featured', 'completed_date'
         ]
-        read_only_fields = ['id', 'image_url']
+        read_only_fields = ['id']
 
-    def get_technologies_display(self, obj):
-        return obj.get_technologies_display()
-
-    def get_image_url(self, obj):
-        if obj.image:
-            return obj.image.url
-        return None
+    # def get_technologies_display(self, obj):
+    #     return obj.get_technologies_display()
 
     def validate_technologies(self, value):
         if not isinstance(value, list):
@@ -88,11 +81,12 @@ class PortfolioProjectSerializer(serializers.ModelSerializer):
         return value.strip()
 
 class PortfolioProjectCreateSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField()
     class Meta:
         model = PortfolioProject
         fields = [
             'title', 'description', 'short_description', 'image', 
-            'technologies', 'live_link', 'github_link', 'featured', 'completed_date'
+            'technologies', 'live_link', 'github_client','github_server', 'featured', 'completed_date'
         ]
 
 class PortfolioProjectUpdateSerializer(serializers.ModelSerializer):
@@ -100,7 +94,7 @@ class PortfolioProjectUpdateSerializer(serializers.ModelSerializer):
         model = PortfolioProject
         fields = [
             'title', 'description', 'short_description', 'image', 
-            'technologies', 'live_link', 'github_link', 'featured', 'completed_date'
+            'technologies', 'live_link', 'github_client','github_server', 'featured', 'completed_date'
         ]
         extra_kwargs = {
             'title': {'required': False},

@@ -14,7 +14,7 @@ class Resume(models.Model):
     linkedin_url = models.URLField(blank=True, null=True)
     portfolio_url = models.URLField(blank=True, null=True)
     
-    pdf_file = models.FileField(upload_to='resumes/', blank=True, null=True)
+    pdf_file = CloudinaryField( null=True, blank=True)
     
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -81,7 +81,8 @@ class ResumeProject(models.Model):
     description = models.TextField(null=True, blank=True)
     technologies = models.JSONField(default=list)
     project_url = models.URLField(blank=True, null=True)
-    github_url = models.URLField(blank=True, null=True)
+    github_client = models.URLField(blank=True, null=True)
+    github_server = models.URLField(blank=True, null=True)
 
     def __str__(self):
         return self.name
@@ -91,10 +92,11 @@ class PortfolioProject(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
     short_description = models.CharField(max_length=300, null=True, blank=True)
-    image = CloudinaryField( blank=True, null=True)
+    image = CloudinaryField('image', folder='projects/', blank=True, null=True)
     technologies = models.JSONField(default=list, blank=True)
     live_link = models.URLField(blank=True, null=True)
-    github_link = models.URLField(blank=True, null=True)
+    github_client = models.URLField(blank=True, null=True)
+    github_server = models.URLField(blank=True, null=True)
     featured = models.BooleanField(default=False)
     completed_date = models.DateField(blank=True, null=True)
 

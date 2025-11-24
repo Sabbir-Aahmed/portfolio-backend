@@ -10,7 +10,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
+import cloudinary
 import cloudinary.uploader
+import cloudinary.api
+from io import BytesIO
 
 from .models import (
     Resume, Experience, Education, 
@@ -45,59 +48,110 @@ class ResumeViewSet(viewsets.ModelViewSet):
             permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
 
+    def perform_create(self, serializer):
+        """Override create to generate PDF after resume is created"""
+        instance = serializer.save()
+        self.regenerate_resume_pdf(instance)
+
     def perform_update(self, serializer):
         """Override update to regenerate PDF when resume is modified"""
         instance = serializer.save()
-        # Regenerate PDF when resume properties are updated
+
         self.regenerate_resume_pdf(instance)
 
     def regenerate_resume_pdf(self, resume):
         """Helper method to regenerate PDF for a resume"""
-        pdf_generator = ResumePDFGenerator()
-        pdf_buffer = pdf_generator.generate_resume_pdf(resume)
-        
-        # Save PDF to file
-        filename = f"resume_{resume.id}_{resume.name.replace(' ', '_')}.pdf"
-        resume.pdf_file.save(filename, ContentFile(pdf_buffer.read()))
-        resume.save()
-        return resume.pdf_file
+        try:
+            pdf_generator = ResumePDFGenerator()
+            pdf_buffer = pdf_generator.generate_resume_pdf(resume)
+            
+            pdf_buffer.seek(0)
+            public_id = f"resumes/resume_{resume.id}_{resume.name.replace(' ', '_')}"
+            
+            result = cloudinary.uploader.upload(
+                pdf_buffer,
+                resource_type='raw',
+                public_id=public_id,
+                overwrite=True,
+                format='pdf',
+                type='upload',
+                access_mode='public' 
+            )
+            
+            resume.pdf_file = result
+            resume.save()
+            return resume.pdf_file
+            
+        except Exception as e:
+            print(f"Error regenerating resume PDF: {e}")
+            return None
 
     @action(detail=True, methods=['get'])
     def download_pdf(self, request, pk=None):
         resume = self.get_object()
         
-        # Check if PDF needs regeneration
-        needs_regeneration = (
-            not resume.pdf_file or 
-            request.GET.get('regenerate') or
-            self.has_resume_changed(resume)
-        )
-        
         if needs_regeneration:
             self.regenerate_resume_pdf(resume)
         
-        # Return PDF file
-        response = FileResponse(
-            resume.pdf_file.open('rb'),
-            content_type='application/pdf'
-        )
-        response['Content-Disposition'] = f'attachment; filename="resume_{resume.name.replace(" ", "_")}.pdf"'
-        return response
+        if resume.pdf_file:
+            try:
 
-    def has_resume_changed(self, resume):
-        """
-        Check if resume data has changed since last PDF generation
-        by comparing updated_at timestamp with PDF file modification time
-        """
-        if not resume.pdf_file:
-            return True
+                cloud_name = cloudinary.config().cloud_name
+                public_id = resume.pdf_file.public_id
+                
+                pdf_url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/{public_id}.pdf"
+                
+                print(f"Manual PDF URL: {pdf_url}")
+                
+                import requests
+                test_response = requests.head(pdf_url, timeout=10)
+                
+                if test_response.status_code == 200:
+                    return Response({
+                        'success': True,
+                        'download_url': pdf_url,
+                        'filename': f"resume_{resume.name.replace(' ', '_')}.pdf",
+                        'message': 'PDF is accessible'
+                    })
+                else:
+                    return Response({
+                        'error': f'PDF not publicly accessible (HTTP {test_response.status_code})',
+                        'url_tested': pdf_url,
+                        'solution': 'Check Cloudinary account settings for raw file access'
+                    }, status=500)
+                    
+            except Exception as e:
+                return Response({'error': f'URL generation failed: {str(e)}'}, status=500)
         
+        return Response({'error': 'PDF not available'}, status=404)
+
+    @action(detail=True, methods=['get'])
+    def pdf_url(self, request, pk=None):
+        """Get the Cloudinary PDF URL without redirecting"""
+        resume = self.get_object()
+        
+        if resume.pdf_file:
+            try:
+                pdf_url = cloudinary.utils.cloudinary_url(
+                    resume.pdf_file.public_id,
+                    resource_type='raw',
+                    format='pdf'
+                )[0]
+                return Response({'pdf_url': pdf_url})
+            except AttributeError:
+                return Response({'error': 'PDF file not properly configured'}, status=500)
+        
+        return Response({'error': 'PDF not available'}, status=404)
+
+    @action(detail=True, methods=['post'])
+    def generate_pdf(self, request, pk=None):
+        """Manually trigger PDF generation"""
+        resume = self.get_object()
         try:
-            pdf_mtime = resume.pdf_file.storage.get_modified_time(resume.pdf_file.name)
-            return resume.updated_at > pdf_mtime
-        except:
-            # If we can't determine, regenerate to be safe
-            return True
+            self.regenerate_resume_pdf(resume)
+            return Response({'message': 'PDF generated successfully!'})
+        except Exception as e:
+            return Response({'error': f'Failed to generate PDF: {str(e)}'}, status=500)
 
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -116,7 +170,9 @@ class ResumeViewSet(viewsets.ModelViewSet):
             
         resume = self.get_object()
         
+        # Deactivate all resumes
         Resume.objects.all().update(is_active=False)
+        # Activate this resume
         resume.is_active = True
         resume.save()
         
@@ -125,11 +181,57 @@ class ResumeViewSet(viewsets.ModelViewSet):
             'resume': ResumeSerializer(resume).data
         })
 
+    @action(detail=True, methods=['delete'])
+    def delete_pdf(self, request, pk=None):
+        """Delete the PDF file from Cloudinary"""
+        resume = self.get_object()
+        
+        if resume.pdf_file:
+            try:
+                # Delete from Cloudinary
+                cloudinary.uploader.destroy(resume.pdf_file.public_id, resource_type='raw')
+                resume.pdf_file = None
+                resume.save()
+                return Response({'message': 'PDF deleted successfully!'})
+            except Exception as e:
+                return Response({'error': f'Failed to delete PDF: {str(e)}'}, status=500)
+        
+        return Response({'message': 'No PDF to delete'})
 
-class ExperienceViewSet(viewsets.ModelViewSet):
+
+class BaseResumeRelatedViewSet(viewsets.ModelViewSet):
+    """Base viewset for resume-related models with PDF regeneration"""
+    permission_classes = [IsAuthenticated]
+    
+    def regenerate_related_resume_pdf(self, resume):
+        """Helper method to regenerate PDF for a resume using Cloudinary"""
+        try:
+            pdf_generator = ResumePDFGenerator()
+            pdf_buffer = pdf_generator.generate_resume_pdf(resume)
+            
+            # Upload PDF to Cloudinary
+            pdf_buffer.seek(0)
+            public_id = f"resumes/resume_{resume.id}_{resume.name.replace(' ', '_')}"
+            
+            result = cloudinary.uploader.upload(
+                pdf_buffer,
+                resource_type='raw',
+                public_id=public_id,
+                overwrite=True,
+                format='pdf'
+            )
+            
+            # Update resume with Cloudinary result
+            resume.pdf_file = result
+            resume.save()
+            
+        except Exception as e:
+            print(f"Error regenerating resume PDF: {e}")
+
+
+class ExperienceViewSet(BaseResumeRelatedViewSet):
     queryset = Experience.objects.all()
     serializer_class = ExperienceSerializer
-    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -144,19 +246,10 @@ class ExperienceViewSet(viewsets.ModelViewSet):
         instance.delete()
         self.regenerate_related_resume_pdf(resume)
 
-    def regenerate_related_resume_pdf(self, resume):
-        pdf_generator = ResumePDFGenerator()
-        pdf_buffer = pdf_generator.generate_resume_pdf(resume)
-        
-        filename = f"resume_{resume.id}_{resume.name.replace(' ', '_')}.pdf"
-        resume.pdf_file.save(filename, ContentFile(pdf_buffer.read()))
-        resume.save()
 
-
-class EducationViewSet(viewsets.ModelViewSet):
+class EducationViewSet(BaseResumeRelatedViewSet):
     queryset = Education.objects.all()
     serializer_class = EducationSerializer
-    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -171,19 +264,10 @@ class EducationViewSet(viewsets.ModelViewSet):
         instance.delete()
         self.regenerate_related_resume_pdf(resume)
 
-    def regenerate_related_resume_pdf(self, resume):
-        pdf_generator = ResumePDFGenerator()
-        pdf_buffer = pdf_generator.generate_resume_pdf(resume)
-        
-        filename = f"resume_{resume.id}_{resume.name.replace(' ', '_')}.pdf"
-        resume.pdf_file.save(filename, ContentFile(pdf_buffer.read()))
-        resume.save()
 
-
-class SkillViewSet(viewsets.ModelViewSet):
+class SkillViewSet(BaseResumeRelatedViewSet):
     queryset = Skill.objects.all()
     serializer_class = SkillSerializer
-    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -198,19 +282,10 @@ class SkillViewSet(viewsets.ModelViewSet):
         instance.delete()
         self.regenerate_related_resume_pdf(resume)
 
-    def regenerate_related_resume_pdf(self, resume):
-        pdf_generator = ResumePDFGenerator()
-        pdf_buffer = pdf_generator.generate_resume_pdf(resume)
-        
-        filename = f"resume_{resume.id}_{resume.name.replace(' ', '_')}.pdf"
-        resume.pdf_file.save(filename, ContentFile(pdf_buffer.read()))
-        resume.save()
 
-
-class ResumeProjectViewSet(viewsets.ModelViewSet):
+class ResumeProjectViewSet(BaseResumeRelatedViewSet):
     queryset = ResumeProject.objects.all()
     serializer_class = ResumeProjectSerializer
-    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -224,14 +299,6 @@ class ResumeProjectViewSet(viewsets.ModelViewSet):
         resume = instance.resume
         instance.delete()
         self.regenerate_related_resume_pdf(resume)
-
-    def regenerate_related_resume_pdf(self, resume):
-        pdf_generator = ResumePDFGenerator()
-        pdf_buffer = pdf_generator.generate_resume_pdf(resume)
-        
-        filename = f"resume_{resume.id}_{resume.name.replace(' ', '_')}.pdf"
-        resume.pdf_file.save(filename, ContentFile(pdf_buffer.read()))
-        resume.save()
 
 
 # Portfolio Project Views
@@ -261,7 +328,6 @@ class PortfolioProjectViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         
-        # Filter by technologies if provided
         technologies = request.query_params.get('technologies', None)
         if technologies:
             tech_list = [tech.strip() for tech in technologies.split(',')]
@@ -313,7 +379,6 @@ class PortfolioProjectViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         project_title = instance.title
         
-        # Delete image from Cloudinary if exists
         if instance.image:
             try:
                 cloudinary.uploader.destroy(instance.image.public_id)
@@ -411,7 +476,6 @@ class PortfolioProjectViewSet(viewsets.ModelViewSet):
         
         if project.image:
             try:
-                # Delete image from Cloudinary
                 cloudinary.uploader.destroy(project.image.public_id)
                 project.image = None
                 project.save()
@@ -424,4 +488,3 @@ class PortfolioProjectViewSet(viewsets.ModelViewSet):
                 )
         
         return Response({'message': 'No image to remove'})
-
