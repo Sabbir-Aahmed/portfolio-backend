@@ -120,6 +120,7 @@ class PortfolioProjectCreateSerializer(serializers.ModelSerializer):
         ]
 
 class PortfolioProjectUpdateSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField()
     class Meta:
         model = PortfolioProject
         fields = [
