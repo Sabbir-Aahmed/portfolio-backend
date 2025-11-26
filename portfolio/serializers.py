@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Resume, Experience, Education, Skill, ResumeProject, PortfolioProject
-
+import cloudinary
 
 
 class ExperienceSerializer(serializers.ModelSerializer):
@@ -40,8 +40,38 @@ class ResumeSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at', 'pdf_file']
     
     def get_pdf_url(self, obj):
-        if obj.pdf_file:
-            return obj.pdf_file.url
+        """
+        Safely construct the PDF URL from multiple possible stored shapes:
+         - obj.pdf_file may be a public_id string (preferred)
+         - or an object with .public_id (older CloudinaryField)
+         - or a dict (legacy) with 'public_id' or 'url'
+        """
+        public_id = None
+
+        pdf_field = getattr(obj, 'pdf_file', None)
+
+        if isinstance(pdf_field, str):
+            public_id = pdf_field
+
+        elif hasattr(pdf_field, 'public_id'):
+            try:
+                public_id = pdf_field.public_id
+            except Exception:
+                public_id = None
+
+        elif isinstance(pdf_field, dict):
+            public_id = pdf_field.get('public_id') or pdf_field.get('publicId') or None
+            if not public_id:
+                url = pdf_field.get('url') or pdf_field.get('secure_url')
+                return url
+
+        if public_id:
+            try:
+                url = cloudinary.utils.cloudinary_url(public_id, resource_type='raw', format='pdf')[0]
+                return url
+            except Exception:
+                return None
+
         return None
 
 class ResumeCreateSerializer(serializers.ModelSerializer):
